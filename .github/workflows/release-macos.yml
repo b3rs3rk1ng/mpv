@@ -1,0 +1,76 @@
+name: release-macos
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Remove stray upstream python binary symlinks under /usr/local
+        run: |
+          find /usr/local/bin -lname '*/Library/Frameworks/Python.framework/*' -delete -print
+          brew unlink python && brew link --overwrite python
+
+      - name: Unlink pkg-config if already installed
+        run: |
+          find "$(brew config | grep HOMEBREW_PREFIX | cut -f 2- -d ' ')/bin" -lname '*/pkg-config@0*/*' -print -exec brew unlink pkg-config@0.29.2 \; -quit
+
+      - name: Install dependencies
+        run: |
+          brew update
+          if brew list ffmpeg &> /dev/null; then brew unlink ffmpeg; fi
+          brew install -q autoconf automake pkgconf libtool python freetype fribidi little-cms2 \
+            luajit libass ffmpeg-full meson rust uchardet mujs libplacebo molten-vk vulkan-loader vulkan-headers \
+            libarchive libbluray libcaca libcdio-paranoia libdvdnav rubberband zimg
+          brew link ffmpeg-full
+
+      - name: Build with meson
+        id: build
+        run: |
+          ./ci/build-macos.sh
+        env:
+          TRAVIS_OS_NAME: "macos-15"
+
+      - name: Create App Bundle
+        run: |
+          meson compile -C build macos-bundle
+          tar -czvf mpv-macos-arm64.tar.gz -C build mpv.app
+
+      - name: Print meson log
+        if: ${{ failure() && steps.build.outcome == 'failure' }}
+        run: |
+          cat ./build/meson-logs/meson-log.txt
+
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: "Latest Build (macOS arm64)"
+          prerelease: true
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: mpv-macos-arm64.tar.gz
+          body: |
+            Auto-built from the latest commit on `master`.
+
+            Includes native pause blur overlay: when mpv is paused, an
+            `NSVisualEffectView` blur appears over the PiP video. Resumes
+            clear it with a 150ms fade.
+
+            **Install:**
+            ```
+            curl -L https://github.com/b3rs3rk1ng/mpv/releases/download/latest/mpv-macos-arm64.tar.gz | tar -xz -C ~/Applications/
+            xattr -dr com.apple.quarantine ~/Applications/mpv.app
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
