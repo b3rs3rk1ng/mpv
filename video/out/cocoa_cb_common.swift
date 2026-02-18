@@ -37,6 +37,7 @@ class CocoaCB: Common, EventSubscriber {
         super.init(option, log)
         layer = GLLayer(cocoaCB: self)
         AppHub.shared.event?.subscribe(self, event: .init(name: "MPV_EVENT_SHUTDOWN"))
+        AppHub.shared.event?.subscribe(self, event: .init(name: "pause", format: MPV_FORMAT_FLAG))
     }
 
     func preinit(_ vo: UnsafeMutablePointer<vo>) {
@@ -276,5 +277,8 @@ class CocoaCB: Common, EventSubscriber {
 
     func handle(event: EventHelper.Event) {
         if event.name == String(describing: MPV_EVENT_SHUTDOWN) { shutdown() }
+        if event.name == "pause", let paused = event.bool {
+            DispatchQueue.main.async { self.window?.setPauseBlur(paused) }
+        }
     }
 }

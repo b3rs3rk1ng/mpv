@@ -32,6 +32,8 @@ class Window: NSWindow, NSWindowDelegate {
     var isMoving: Bool = false
     var previousStyleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
 
+    var pauseBlurView: NSVisualEffectView?
+
     var isAnimating: Bool = false
     let animationLock: NSCondition = NSCondition()
 
@@ -98,6 +100,15 @@ class Window: NSWindow, NSWindowDelegate {
             cView.addSubview(view)
             view.frame = cView.frame
             unfsContentFrame = convertToScreen(cView.frame)
+
+            let blurView = NSVisualEffectView(frame: cView.bounds)
+            blurView.blendingMode = .withinWindow
+            blurView.material = .dark
+            blurView.state = .active
+            blurView.alphaValue = 0
+            blurView.autoresizingMask = [.width, .height]
+            cView.addSubview(blurView)
+            pauseBlurView = blurView
         }
 
         targetScreen = screen
@@ -109,6 +120,14 @@ class Window: NSWindow, NSWindowDelegate {
         AppHub.shared.menu?.register(#selector(setDoubleWindowSize), key: .itemDoubleSize)
         AppHub.shared.menu?.register(#selector(performMiniaturize(_:)), key: .itemMinimize)
         AppHub.shared.menu?.register(#selector(performZoom(_:)), key: .itemZoom)
+    }
+
+    func setPauseBlur(_ paused: Bool) {
+        guard let blurView = pauseBlurView else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            blurView.animator().alphaValue = paused ? 0.85 : 0.0
+        }
     }
 
     override func toggleFullScreen(_ sender: Any?) {
